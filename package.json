@@ -1,0 +1,18 @@
+{
+  "name": "dsh-yansu",
+  "version": "0.1.0",
+  "description": "研序 · 轻量研发交付。让需求、设计、任务与验收在 Git 工作区内交接。",
+  "license": "MIT",
+  "type": "module",
+  "engines": { "dsh": "0.2.2-rc.5", "node": ">=20" },
+  "exports": { ".": "./index.js", "./client": "./client.js", "./package.json": "./package.json" },
+  "files": ["index.js", "client.js", "cordis.patch.yml", "lib", "README.md", "LICENSE"],
+  "keywords": ["deepseek-harness", "dsh-plugin", "software-delivery"],
+  "scripts": { "test": "node --test" },
+  "peerDependencies": { "@deepseek-ai/dsh-tools": "0.2.2-rc.5" },
+  "peerDependenciesMeta": { "@deepseek-ai/dsh-tools": { "optional": true } },
+  "dsh": {
+    "bundle": { "patch": "./cordis.patch.yml" },
+    "client": { "platform": "web", "immediately": true, "inject": ["@deepseek-ai/dsh-client-ui-workspace"] }
+  }
+}
