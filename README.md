@@ -8,11 +8,11 @@
 
 ### macOS Desktop
 
-完全退出 DeepSeek Harness。将命令中的路径替换为下载的 `.tgz` 文件绝对路径，然后重新打开应用并选择侧栏「研序」。
+完全退出 DeepSeek Harness，运行下面的命令从 GitHub 安装。安装完成后重新打开应用，在侧栏选择「研序」。
 
 ```sh
 '/Applications/DeepSeek Harness.app/Contents/Resources/runtime/cli/bin/dsh' \
-  plugin --profile desktop add '/absolute/path/dsh-yansu-0.1.0.tgz'
+  plugin --profile desktop add 'git+https://github.com/farmertzc-star/dsh-yansu.git'
 ```
 
 可以在应用的「插件」页面禁用或卸载研序。使用命令卸载时，先退出应用，再运行相同的 CLI，参数改为 `plugin --profile desktop remove dsh-yansu`。
@@ -23,7 +23,7 @@
 
 ```sh
 dsh --profile yansu-dev --from-default-profile web --dump-config
-dsh plugin --profile yansu-dev add '/absolute/path/dsh-yansu-0.1.0.tgz'
+dsh plugin --profile yansu-dev add 'git+https://github.com/farmertzc-star/dsh-yansu.git'
 dsh --profile yansu-dev
 ```
 
