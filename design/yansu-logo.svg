@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 183 64" width="183" height="64" role="img" aria-labelledby="title" fill="none" stroke="currentColor" stroke-linejoin="round">
+  <title id="title">研序 · 分支汇流</title>
+  <svg width="64" height="64" viewBox="0 0 24 24" stroke-width="1.7" stroke-linecap="round">
+    <circle cx="5.5" cy="5.25" r="2.25"/>
+    <circle cx="18.5" cy="5.25" r="2.25"/>
+    <path d="M5.5 7.5v2.75L12 14l6.5-3.75V7.5M12 14v2.5"/>
+    <rect x="9.5" y="16.5" width="5" height="5" rx="0.9"/>
+  </svg>
+  <g stroke-width="3.7">
+    <g transform="translate(80 10)">
+      <path d="M2 6h18M11 6C10.2 14.2 7.1 20.1 1.4 25.5M7.6 39.8V22.4h10.1v14.2H7.6"/>
+      <path d="M23 6h21M21 21h25M29 6v13.5c0 10.9-2.1 17.5-8.4 22.7M39 6v36.4"/>
+    </g>
+    <g transform="translate(135 10)">
+      <path d="m23.2 1.6 4.2 6.1M45.6 10.2H8.9v14.6c0 7.7-2 13.1-6.6 18.2"/>
+      <path d="M15.8 17.7h24.6l-12 9.1M21.8 22.8l7.8 6M12.5 29h32l-5.6 6.7M28.7 29v10.2c0 2.4-1.3 3.8-3.6 3.8h-6"/>
+    </g>
+  </g>
+</svg>
