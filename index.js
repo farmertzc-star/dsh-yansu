@@ -1,12 +1,13 @@
 import { defineTool, ToolArgsError, ToolContextUnavailableError } from '@deepseek-ai/dsh-tools';
-import { checkReview, openProject, overview, startTask, taskDiff } from './lib/flow.js';
-import { draft, initialization, previewMarkdown } from './lib/handoff.js';
+import { checkReview, openProject, overview, preparation, prepareReviewRecord, startTask, taskDiff } from './lib/flow.js';
+import { documentPreview, draft, initialization, prdImport } from './lib/handoff.js';
 import { realpath } from 'node:fs/promises';
 import { contains, ProjectError } from './lib/workspace.js';
 
 export const name = 'yansu';
 export const inject = ['tools', 'workspaceRegistry', 'workingDirectory', 'webServer', 'connection'];
-const actions = ['overview', 'initialize', 'diff', 'start', 'review'];
+const preparationActions = ['requirements', 'design', 'plan'];
+const actions = ['overview', 'initialize', 'importPrd', 'revisePrd', 'rules', ...preparationActions, 'diff', 'start', 'review'];
 const taskId = /^TASK-\d+$/;
 
 async function run(path, input, signal) {
@@ -14,6 +15,9 @@ async function run(path, input, signal) {
   if (input.expected && input.expected !== project.token) throw new ProjectError('工程文档版本已变化，请刷新后重新预览。', 409);
   if (input.action === 'overview') return overview(project);
   if (input.action === 'initialize') return initialization(project);
+  if (input.action === 'importPrd' || input.action === 'revisePrd') return prdImport(project);
+  if (input.action === 'rules') return { token: project.token, paths: project.paths };
+  if (preparationActions.includes(input.action)) return preparation(project, input.action, input);
   if (input.action === 'diff') return taskDiff(project, input, signal);
   if (!taskId.test(input.taskId ?? '')) throw new ProjectError('需要有效的 TASK ID。');
   if (input.action === 'start') return startTask(project, input);
@@ -34,12 +38,22 @@ function fromQuery(url) {
   return {
     action: param('action') ?? 'overview', ref: param('ref'), taskId: param('taskId'), owner: param('owner'),
     expected: param('expected'), expectedReview: param('expectedReview'),
+    mode: param('mode'), revise: param('revise') === '1',
     selected: list && /^(\d+,)*\d+$/.test(list) ? list.split(',').map(Number) : [],
   };
 }
 
 export function apply(ctx) {
   const assignments = new Map();
+  const developmentSessions = new Set();
+  async function sessionWorkspace(exec) {
+    if (!exec.agent) throw new ToolContextUnavailableError('研序需要当前工作区会话。');
+    const session = exec.agent.session;
+    const cwd = await realpath(ctx.workingDirectory.get(session));
+    const workspace = ctx.workspaceRegistry.list().filter(item => contains(item.path, cwd)).sort((a, b) => b.path.length - a.path.length)[0];
+    if (!workspace) throw new ToolArgsError(['当前目录未注册为 DSH 工作区。']);
+    return { workspace, session };
+  }
   function release(session) {
     for (const [workspace, assignment] of assignments) {
       if (assignment.session === session) assignments.delete(workspace);
@@ -60,24 +74,52 @@ export function apply(ctx) {
       ref: { type: 'string', description: 'Git baseline for diff' },
       expected: { type: 'string', description: 'Document snapshot token from preview' },
       expectedReview: { type: 'string', description: 'Evidence snapshot token for review' },
+      revise: { type: 'boolean', description: 'Include existing designs for a revision review' },
     },
     output: { schema: { type: 'string' }, render: (_args, value) => [{ type: 'text', text: value }] },
     async execute(input, exec) {
-      if (!exec.agent) throw new ToolContextUnavailableError('研序需要当前工作区会话。');
-      const cwd = await realpath(ctx.workingDirectory.get(exec.agent.session));
-      const workspace = ctx.workspaceRegistry.list().filter(item => contains(item.path, cwd)).sort((a, b) => b.path.length - a.path.length)[0];
-      if (!workspace) throw new ToolArgsError(['当前目录未注册为 DSH 工作区。']);
+      const { workspace, session } = await sessionWorkspace(exec);
       try {
         const result = await run(workspace.path, input, exec.signal);
         if (input.action === 'start' && input.expected && result.ready) {
           const assignment = assignments.get(workspace.id);
-          const session = exec.agent.session;
           if (assignment && (assignment.session !== session || assignment.taskId !== input.taskId)) {
             throw new ProjectError(`当前工作区正在分派 ${assignment.taskId}，请等待该会话结束后刷新。`, 409);
           }
           assignments.set(workspace.id, { session, taskId: input.taskId });
+          developmentSessions.add(JSON.stringify([workspace.id, input.taskId, session.id]));
         }
         return JSON.stringify(result);
+      } catch (error) {
+        if (error instanceof ProjectError) throw new ToolArgsError([error.message]);
+        throw error;
+      }
+    },
+  }));
+
+  ctx.tools.register(defineTool({
+    name: 'yansu_review_record',
+    description: 'Prepare an independent 研序 review record from actual test results. Returns the exact Markdown to write after confirmation. Does not write files.',
+    parameters: {
+      taskId: { type: 'string', required: true, description: 'TASK-NNN for the review' },
+      expected: { type: 'string', required: true, description: 'Document snapshot token from yansu_workflow action=review' },
+      expectedReview: { type: 'string', required: true, description: 'Evidence snapshot token, reviewToken from the initial review before running tests' },
+      testResult: { type: 'string', enum: ['PASS', 'FAIL'], required: true, description: 'Actual test outcome' },
+      evidence: { type: 'string', required: true, description: 'Actual command, exit status and result summary, or a log/CI reference' },
+      verdict: { type: 'string', enum: ['PASS', 'FAIL'], required: true, description: 'Independent review verdict' },
+      openIssues: { type: 'number', required: true, description: 'Count of open P0 and P1 issues' },
+      release: { type: 'string', description: 'Release handoff, when applicable' },
+    },
+    output: { schema: { type: 'string' }, render: (_args, value) => [{ type: 'text', text: value }] },
+    async execute(input, exec) {
+      if (!taskId.test(input.taskId)) throw new ToolArgsError(['需要有效的 TASK ID。']);
+      const { workspace, session } = await sessionWorkspace(exec);
+      if (developmentSessions.has(JSON.stringify([workspace.id, input.taskId, session.id]))) {
+        throw new ToolArgsError(['请在独立审核会话记录测试结果。']);
+      }
+      try {
+        const project = await openProject(workspace.path, exec.signal);
+        return JSON.stringify(await prepareReviewRecord(project, input, session.id, exec.signal));
       } catch (error) {
         if (error instanceof ProjectError) throw new ToolArgsError([error.message]);
         throw error;
@@ -106,7 +148,7 @@ export function apply(ctx) {
           const key = url.searchParams.get('kind');
           if (!['agents', 'prd', 'design', 'tasks'].includes(key)) throw new ProjectError('未知文档类型。');
           const project = await openProject(workspace.path, abort.signal);
-          return send(res, 200, { path: project.paths[key], text: previewMarkdown(project.documents[key]) });
+          return send(res, 200, await documentPreview(project, key, url.searchParams.get('version') ?? undefined));
         }
         const input = fromQuery(url);
         if (!actions.includes(input.action)) throw new ProjectError('未知操作。');
